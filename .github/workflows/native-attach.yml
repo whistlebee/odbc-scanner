@@ -1,0 +1,49 @@
+name: Native ODBC ATTACH
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  sqlite-odbc:
+    runs-on: ubuntu-24.04
+    env:
+      DUCKDB_CAPI_LIB_PATH: ${{ github.workspace }}/duckdb-libs/libduckdb.so
+      ODBC_CONN_STRING: Driver=/usr/lib/x86_64-linux-gnu/odbc/libsqlite3odbc.so;Database=${{ github.workspace }}/source.sqlite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: duckdb/duckdb
+          ref: v2.0.0
+          path: duckdb-source
+      - name: Install ODBC dependencies and DuckDB
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unixodbc-dev libsqliteodbc
+          curl -fL https://github.com/duckdb/duckdb/releases/download/v2.0.0/duckdb-cli-linux-amd64.tar.gz | tar -xz
+          mkdir duckdb-libs
+          curl -fL https://github.com/duckdb/duckdb/releases/download/v2.0.0/duckdb-shared-libs-linux-amd64.tar.gz | tar -xz -C duckdb-libs
+      - name: Create SQLite fixture
+        run: |
+          python3 - <<'PY'
+          import sqlite3
+          with sqlite3.connect('source.sqlite') as conn:
+              conn.executescript('''
+                  CREATE TABLE employee(id INTEGER, name TEXT, department INTEGER);
+                  INSERT INTO employee VALUES (1,'Ada',10),(2,'Grace',20),(3,NULL,10);
+                  CREATE VIEW employee_view AS SELECT id,name FROM employee;
+                  CREATE TABLE large_values(id INTEGER);
+                  CREATE TABLE "odd"" table; --" (value TEXT);
+                  INSERT INTO "odd"" table; --" VALUES ('quoted');
+              ''')
+              conn.executemany('INSERT INTO large_values VALUES (?)', ((i,) for i in range(1,5004)))
+          PY
+      - name: Build native extension and shared-library tests
+        run: |
+          python3 resources/scripts/build_native.py --duckdb-source duckdb-source --duckdb ./duckdb --jobs 2 --c-api-tests
+          mkdir -p build/release
+          cp cmake_build/native/odbc_scanner.duckdb_extension build/release/
+      - name: Test native attachment through libduckdb
+        run: cmake_build/native/test/test_odbc_scanner '[native_attach]'
