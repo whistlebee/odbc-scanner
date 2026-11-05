@@ -316,11 +316,11 @@ ODBCSCANNER_HIDDEN SQLRETURN SQL_API
                                                                   szSqlState, pfNativeError, szErrorMsg, cbErrorMsgMax,
                                                                   pcbErrorMsg)}
 
-ODBCSCANNER_HIDDEN SQLRETURN SQL_API SQLTablesW(SQLHSTMT statement, SQLWCHAR *catalog, SQLSMALLINT catalog_length,
-    SQLWCHAR *schema, SQLSMALLINT schema_length, SQLWCHAR *table, SQLSMALLINT table_length,
-    SQLWCHAR *types, SQLSMALLINT types_length) {
-    ODBCSCANNER_FORWARD(SQLTablesW, statement, catalog, catalog_length, schema, schema_length,
-                        table, table_length, types, types_length)}
+ODBCSCANNER_HIDDEN SQLRETURN SQL_API
+    SQLTablesW(SQLHSTMT statement, SQLWCHAR *catalog, SQLSMALLINT catalog_length, SQLWCHAR *schema,
+               SQLSMALLINT schema_length, SQLWCHAR *table, SQLSMALLINT table_length, SQLWCHAR *types,
+               SQLSMALLINT types_length) {ODBCSCANNER_FORWARD(SQLTablesW, statement, catalog, catalog_length, schema,
+                                                              schema_length, table, table_length, types, types_length)}
 
 ODBCSCANNER_HIDDEN SQLRETURN SQL_API SQLGetInfo(SQLHDBC ConnectionHandle, SQLUSMALLINT InfoType, SQLPOINTER InfoValue,
                                                 SQLSMALLINT BufferLength, SQLSMALLINT *StringLength) {
