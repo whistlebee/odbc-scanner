@@ -123,6 +123,21 @@ class NativeAttach(unittest.TestCase):
         self.assertEqual(rows[:2], [[{'name': 'Ada'}], [{'name': 'Grace'}]])
         self.assertEqual(rows[-1], [{'closed': None}])
 
+    def test_describe_preserves_caller_owned_connection(self):
+        rows = self.sql(f"""
+            SET VARIABLE handle = odbc_connect({literal(self.connection)});
+            DESCRIBE SELECT * FROM odbc_query(getvariable('handle'), 'SELECT name FROM employee WHERE id=1', close_connection=true);
+            FROM odbc_query(getvariable('handle'), 'SELECT name FROM employee WHERE id=1', close_connection=true);
+        """)
+        self.assertEqual(rows[-1], [{'name': 'Ada'}])
+
+    def test_explicit_close_connection_still_closes_after_execution(self):
+        self.sql(f"""
+            SET VARIABLE handle = odbc_connect({literal(self.connection)});
+            FROM odbc_query(getvariable('handle'), 'SELECT name FROM employee WHERE id=1', close_connection=true);
+            FROM odbc_query(getvariable('handle'), 'SELECT name FROM employee WHERE id=1');
+        """, error="ODBC connection not found on bind")
+
     def test_mapping_matches_existing_scanner(self):
         rows = self.sql(f"""
             SELECT * FROM remote.main.employee ORDER BY id;

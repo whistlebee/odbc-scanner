@@ -37,9 +37,11 @@ enum class SqlExecStatus { SUCCESS, FAILURE };
 struct QueryOptions {
 	bool ignore_exec_failure = false;
 	bool close_connection = false;
+	bool owns_connection = false;
 
-	QueryOptions(bool ignore_exec_failure_in, bool close_connection_in)
-	    : ignore_exec_failure(ignore_exec_failure_in), close_connection(close_connection_in) {
+	QueryOptions(bool ignore_exec_failure_in, bool close_connection_in, bool owns_connection_in)
+	    : ignore_exec_failure(ignore_exec_failure_in), close_connection(close_connection_in),
+	      owns_connection(owns_connection_in) {
 	}
 };
 
@@ -65,7 +67,7 @@ struct BindData {
 	~BindData() {
 		// String-backed calls own their connection even when a plan is only bound (DESCRIBE,
 		// ATTACH discovery, EXPLAIN) and never reaches GlobalInit. Free its statement first.
-		if (query_options.close_connection) {
+		if (query_options.owns_connection) {
 			ctx.hstmt_ptr.reset();
 			ConnectionsRegistry::Remove(conn_id);
 		}
@@ -81,8 +83,9 @@ struct BindData {
 struct GlobalInitData {
 	int64_t conn_id;
 	std::unique_ptr<OdbcConnection> conn_ptr;
-	GlobalInitData(int64_t conn_id, std::unique_ptr<OdbcConnection> conn_ptr_in, HSTMT stmt)
-	    : conn_id(conn_id), conn_ptr(std::move(conn_ptr_in)) {
+	bool return_connection;
+	GlobalInitData(int64_t conn_id, std::unique_ptr<OdbcConnection> conn_ptr_in, bool return_connection_in, HSTMT stmt)
+	    : conn_id(conn_id), conn_ptr(std::move(conn_ptr_in)), return_connection(return_connection_in) {
 		if (!conn_ptr) {
 			throw ScannerException("'odbc_query' error: ODBC connection not found on global init, id: " +
 			                       std::to_string(conn_id));
@@ -95,7 +98,9 @@ struct GlobalInitData {
 		// The prepared statement in BindData still uses this connection. Return it even for
 		// owned calls so prepared queries can execute again; BindData closes owned connections
 		// after releasing their statement, including when a plan never executes.
-		ConnectionsRegistry::Add(std::move(conn_ptr));
+		if (return_connection) {
+			ConnectionsRegistry::Add(std::move(conn_ptr));
+		}
 	}
 };
 
@@ -122,7 +127,7 @@ static QueryOptions ExtractQueryOptions(const Value *ignore_exec_failure_val, co
 			                       "a connection string");
 		}
 	}
-	return QueryOptions(ignore_exec_failure, close_connection);
+	return QueryOptions(ignore_exec_failure, close_connection, conn_must_be_closed);
 }
 
 static void Bind(TableFunction::BindInput &input) {
@@ -211,7 +216,9 @@ static void GlobalInit(TableFunction::InitGlobalInput &input) {
 	// Keep the connection in global data while the function is running
 	// to not allow other threads operate on it or close it.
 	auto conn_ptr = ConnectionsRegistry::Remove(bdata.conn_id);
-	input.SetGlobalState<GlobalInitData>(bdata.conn_id, std::move(conn_ptr), bdata.ctx.hstmt());
+	input.SetGlobalState<GlobalInitData>(bdata.conn_id, std::move(conn_ptr),
+	                                     bdata.query_options.owns_connection || !bdata.query_options.close_connection,
+	                                     bdata.ctx.hstmt());
 }
 
 static void LocalInit(TableFunction::InitLocalInput &input) {
