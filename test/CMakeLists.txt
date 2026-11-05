@@ -20,6 +20,10 @@ add_executable(test_${EXTENSION_NAME}
     test_version.cpp
 )
 
+if(ODBC_NATIVE_ATTACH)
+    target_sources(test_${EXTENSION_NAME} PRIVATE test_native_attach.cpp)
+endif()
+
 if (MSVC)
     # C++ API sources: integer conversions and local variables shadowing class members
     set_source_files_properties(../duckdb_capi_v2/cpp/duckdb_cpp.cpp PROPERTIES COMPILE_OPTIONS "/wd4244;/wd4458")

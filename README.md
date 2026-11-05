@@ -57,9 +57,14 @@ To create optimized release binaries, simply run `make release` instead.
 
 ## Native read-only ATTACH (this fork)
 
+Supported hosts: the macOS v2.0.0 CLI and applications using the official v2.0.0
+shared library. The official Linux v2.0.0 CLI omits catalog symbols needed by
+native storage extensions, so it cannot load this adapter. Linux integration
+uses the full shared library. A custom CLI must export the full C++ catalog API.
+
 This fork adds an optional native catalog adapter for **DuckDB v2.0.0**. It uses
 DuckDB's internal C++ storage interface and the existing `odbc_query` scanner.
-The native binary must match the DuckDB version and platform; ordinary C API
+The native binary must match the DuckDB version, platform, and C++ build settings; ordinary C API
 builds remain available without `ATTACH`.
 
 ```sql
@@ -124,7 +129,9 @@ that the source checkout's C API headers match this fork's vendored headers.
 Native Windows builds additionally need the matching DuckDB import library;
 pass `--duckdb-library /path/to/duckdb.lib` to the build script. Windows builds
 have not been validated locally.
-Linux and macOS resolve native DuckDB symbols from the host process.
+Linux and macOS resolve native DuckDB symbols from the host process. Custom
+hosts built with `DISABLE_RTTI` must also set `ODBC_NATIVE_DISABLE_RTTI=ON` in
+the native CMake configuration.
 
 Run the integration suite with an installed SQLite ODBC driver:
 
@@ -137,3 +144,17 @@ python3 -m unittest discover -s test -p test_native_attach.py -v
 
 For Homebrew, install `unixodbc sqliteodbc`; the driver is normally
 `/opt/homebrew/opt/sqliteodbc/lib/libsqlite3odbc.dylib` on Apple Silicon.
+
+For shared-library hosts (including Linux), build and run the C++ integration
+suite using the matching library and the SQLite fixture defined in
+`.github/workflows/native-attach.yml`:
+
+```shell
+DUCKDB_CAPI_LIB_PATH=/path/to/libduckdb.so \
+python3 resources/scripts/build_native.py \
+    --duckdb-source ../duckdb-v2 --duckdb /path/to/duckdb-v2.0.0 --c-api-tests
+mkdir -p build/release
+cp cmake_build/native/odbc_scanner.duckdb_extension build/release/
+ODBC_CONN_STRING='Driver=/path/to/libsqlite3odbc.so;Database=/path/to/source.sqlite' \
+cmake_build/native/test/test_odbc_scanner '[native_attach]'
+```

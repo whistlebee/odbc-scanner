@@ -182,14 +182,9 @@ add_library(${EXTENSION_NAME} SHARED ${EXTENSION_SOURCES})
 if(ODBC_NATIVE_ATTACH)
     target_include_directories(${EXTENSION_NAME} SYSTEM PRIVATE "${ODBC_DUCKDB_SOURCE_DIR}/src/include")
     target_compile_definitions(${EXTENSION_NAME} PRIVATE DUCKDB_BUILD_LOADABLE_EXTENSION)
-    # The official Linux binary disables RTTI, while macOS retains it. Match the host:
-    # mixing these settings breaks both inherited vtables and exception handling.
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        set(ODBC_NATIVE_RTTI_DEFAULT ON)
-    else()
-        set(ODBC_NATIVE_RTTI_DEFAULT OFF)
-    endif()
-    option(ODBC_NATIVE_DISABLE_RTTI "Match a DuckDB host built with DISABLE_RTTI" ${ODBC_NATIVE_RTTI_DEFAULT})
+    # Match the host when using a custom DuckDB build. Official shared libraries and
+    # the macOS CLI retain RTTI. The stripped Linux CLI does not export the full catalog API.
+    option(ODBC_NATIVE_DISABLE_RTTI "Match a DuckDB host built with DISABLE_RTTI" OFF)
     if(ODBC_NATIVE_DISABLE_RTTI)
         if(MSVC)
             set_source_files_properties(src/odbc_storage.cpp PROPERTIES COMPILE_OPTIONS "/GR-")

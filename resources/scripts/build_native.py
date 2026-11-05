@@ -16,6 +16,7 @@ def main():
     parser.add_argument("--duckdb", default="duckdb")
     parser.add_argument("--build-dir", default="cmake_build/native", type=pathlib.Path)
     parser.add_argument("--jobs", default="4")
+    parser.add_argument("--c-api-tests", action="store_true", help="Build tests linked to DUCKDB_CAPI_LIB_PATH")
     parser.add_argument("--duckdb-library", type=pathlib.Path, help="Matching DuckDB import library for Windows")
     args = parser.parse_args()
     root = pathlib.Path(__file__).resolve().parents[2]
@@ -28,7 +29,7 @@ def main():
     library_flags = [f"-DODBC_DUCKDB_LIBRARY={args.duckdb_library.resolve()}"] if args.duckdb_library else []
     run("cmake", "-S", root, "-B", build, "-DEXTENSION_NAME=odbc_scanner",
         "-DTARGET_DUCKDB_VERSION_MAJOR=2", "-DTARGET_DUCKDB_VERSION_MINOR=0", "-DTARGET_DUCKDB_VERSION_PATCH=0",
-        "-DDUCKDB_EXTENSION_API_VERSION_UNSTABLE=1", "-DODBC_NATIVE_ATTACH=ON", "-DENABLE_C_API_TESTS=OFF",
+        "-DDUCKDB_EXTENSION_API_VERSION_UNSTABLE=1", "-DODBC_NATIVE_ATTACH=ON", f"-DENABLE_C_API_TESTS={'ON' if args.c_api_tests else 'OFF'}",
         f"-DODBC_DUCKDB_SOURCE_DIR={source}", "-DCMAKE_BUILD_TYPE=Release", *library_flags)
     run("cmake", "--build", build, "--parallel", args.jobs)
     candidates = list(build.glob("*odbc_scanner.dylib")) + list(build.glob("*odbc_scanner.so")) + list(build.glob("*odbc_scanner.dll"))
