@@ -72,6 +72,24 @@ endif()
 ###
 project(${EXTENSION_NAME} LANGUAGES C CXX)
 
+option(ODBC_NATIVE_ATTACH "Build native read-only ATTACH support (requires matching DuckDB C++ sources)" OFF)
+set(ODBC_DUCKDB_SOURCE_DIR "" CACHE PATH "DuckDB v2.0.0 source checkout for native ATTACH")
+set(ODBC_EXTENSION_ABI C_STRUCT_UNSTABLE)
+if(ODBC_NATIVE_ATTACH)
+    set(ODBC_EXTENSION_ABI CPP)
+    if(NOT EXISTS "${ODBC_DUCKDB_SOURCE_DIR}/src/include/duckdb.hpp")
+        message(FATAL_ERROR "ODBC_NATIVE_ATTACH requires ODBC_DUCKDB_SOURCE_DIR pointing to DuckDB v2.0.0 sources")
+    endif()
+    # The native interfaces and C API vtable must both match the target library exactly.
+    foreach(header duckdb_v2.h duckdb_extension_v2.h)
+        file(SHA256 "${ODBC_DUCKDB_SOURCE_DIR}/src/include/${header}" native_header_hash)
+        file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/duckdb_capi_v2/${header}" vendored_header_hash)
+        if(NOT native_header_hash STREQUAL vendored_header_hash)
+            message(FATAL_ERROR "Native ATTACH requires DuckDB sources matching the vendored ${header}")
+        endif()
+    endforeach()
+endif()
+
 if (APPLE AND "$ENV{DUCKDB_PLATFORM}" STREQUAL osx_amd64)
     set(CMAKE_OSX_ARCHITECTURES x86_64)
     execute_process(
@@ -157,7 +175,23 @@ else()
     )
 endif()
 
+if(ODBC_NATIVE_ATTACH)
+    list(APPEND EXTENSION_SOURCES src/odbc_storage.cpp src/odbc_storage_metadata.cpp)
+endif()
 add_library(${EXTENSION_NAME} SHARED ${EXTENSION_SOURCES})
+if(ODBC_NATIVE_ATTACH)
+    target_include_directories(${EXTENSION_NAME} SYSTEM PRIVATE "${ODBC_DUCKDB_SOURCE_DIR}/src/include")
+    target_compile_definitions(${EXTENSION_NAME} PRIVATE DUCKDB_BUILD_LOADABLE_EXTENSION)
+    if(APPLE)
+        target_link_options(${EXTENSION_NAME} PRIVATE "-undefined" "dynamic_lookup")
+    elseif(WIN32)
+        set(ODBC_DUCKDB_LIBRARY "" CACHE FILEPATH "Matching DuckDB import library")
+        if(NOT EXISTS "${ODBC_DUCKDB_LIBRARY}")
+            message(FATAL_ERROR "Native Windows builds require ODBC_DUCKDB_LIBRARY (matching DuckDB import library)")
+        endif()
+        target_link_libraries(${EXTENSION_NAME} PRIVATE "${ODBC_DUCKDB_LIBRARY}")
+    endif()
+endif()
 
 # C++ API calls are routed through the extension API struct
 target_compile_definitions(${EXTENSION_NAME} PRIVATE DUCKDB_CPP_API_LOADABLE)
@@ -182,7 +216,7 @@ if(DEFINED ${EXTENSION_NAME}_CMAKE_ONLY_BUILD)
             $<TARGET_FILE:${EXTENSION_NAME}>
             ${CMAKE_CURRENT_BINARY_DIR}/${EXTENSION_NAME}.duckdb_extension
         COMMAND ${CMAKE_COMMAND}
-            -DABI_TYPE=C_STRUCT_UNSTABLE
+            -DABI_TYPE=${ODBC_EXTENSION_ABI}
             -DEXTENSION=${CMAKE_CURRENT_BINARY_DIR}/odbc_scanner.duckdb_extension
             -DPLATFORM_FILE=${DuckDB_BINARY_DIR}/duckdb_platform_out
             -DVERSION_FIELD=${DUCKDB_EXTENSION_API_VERSION_COMBINED}

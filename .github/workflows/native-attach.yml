@@ -1,0 +1,30 @@
+name: Native ODBC ATTACH
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  sqlite-odbc:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: duckdb/duckdb
+          ref: v2.0.0
+          path: duckdb-source
+      - name: Install ODBC dependencies and DuckDB
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unixodbc-dev libsqliteodbc
+          curl -fL https://github.com/duckdb/duckdb/releases/download/v2.0.0/duckdb-cli-linux-amd64.tar.gz | tar -xz
+      - name: Build native extension
+        run: python3 resources/scripts/build_native.py --duckdb-source duckdb-source --duckdb ./duckdb --jobs 2
+      - name: Test native attachment
+        env:
+          ODBC_ATTACH_DUCKDB: ./duckdb
+          ODBC_ATTACH_EXTENSION: cmake_build/native/odbc_scanner.duckdb_extension
+          ODBC_ATTACH_SQLITE_DRIVER: /usr/lib/x86_64-linux-gnu/odbc/libsqlite3odbc.so
+        run: python3 -m unittest discover -s test -p test_native_attach.py -v
